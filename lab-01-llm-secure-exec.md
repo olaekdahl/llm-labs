@@ -4,6 +4,8 @@
 
 In this lab, you'll build a secure, AI-powered command execution app that transforms natural language queries into Linux shell commands using OpenAI's GPT models. You'll implement role-based access control with JWTs and provide a web frontend with user login, command suggestions, and output rendering.
 
+[Solution](solution.zip)
+
 ---
 
 ## 🧱 Architecture
