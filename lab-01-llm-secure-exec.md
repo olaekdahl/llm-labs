@@ -52,7 +52,17 @@ llm-secure-exec-demo/
 
 ---
 
-## 🧩 Step 0: Ensure ESM Support in Your Project
+## 🧪 Step 1: Initialize the Project
+
+```bash
+mkdir llm-secure-exec-demo && cd llm-secure-exec-demo
+npm init -y
+npm install express openai dotenv jsonwebtoken
+npm install --save-dev @types/jsonwebtoken
+npm install --save-dev @types/express
+npm install --save-dev typescript ts-node
+npx tsc --init
+```
 
 This project uses **ES Modules** (ESM) syntax like `import express from 'express'`. To make sure your TypeScript and Node environment supports this:
 
@@ -85,20 +95,6 @@ Make sure your `package.json` includes:
 {
   "type": "module"
 }
-```
-
----
-
-## 🧪 Step 1: Initialize the Project
-
-```bash
-mkdir llm-secure-exec-demo && cd llm-secure-exec-demo
-npm init -y
-npm install express openai dotenv jsonwebtoken
-npm install --save-dev @types/jsonwebtoken
-npm install --save-dev @types/express
-npm install --save-dev typescript ts-node
-npx tsc --init
 ```
 
 ---
