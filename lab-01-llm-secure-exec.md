@@ -32,7 +32,6 @@ User → Login → Token → Query → LLM → Command → Policy Check → Exec
 ## 🛠 Prerequisites
 
 - Node.js 20+
-- Docker
 - OpenAI API key
 - Basic Linux shell familiarity
 
@@ -42,16 +41,13 @@ User → Login → Token → Query → LLM → Command → Policy Check → Exec
 
 ```text
 llm-secure-exec-demo/
-├── auth.ts              # Login, JWT, audit logging, role policies
-├── server.ts            # Express API routes
-├── llm.ts               # OpenAI integration
-├── executor.ts          # Shell command execution
-├── frontend/index.html  # UI with login and command form
-├── .env                 # Secrets (OpenAI key, JWT secret)
-├── Dockerfile
-├── docker-compose.yml
-├── tsconfig.json
-└── README.md
+├── auth.ts                   # Login, JWT, audit logging, role policies
+├── server.ts                 # Express API routes
+├── llm.ts                    # OpenAI integration
+├── executor.ts               # Shell command execution
+├── dist/frontend/index.html  # UI with login and command form
+├── .env                      # Secrets (OpenAI key, JWT secret)
+└── tsconfig.json
 ```
 
 ---
@@ -98,9 +94,8 @@ Make sure your `package.json` includes:
 ```bash
 mkdir llm-secure-exec-demo && cd llm-secure-exec-demo
 npm init -y
-npm install express openai dotenv jsonwebtoken bcrypt
+npm install express openai dotenv jsonwebtoken
 npm install --save-dev @types/jsonwebtoken
-npm install --save-dev @types/bcrypt
 npm install --save-dev @types/express
 npm install --save-dev typescript ts-node
 npx tsc --init
@@ -115,56 +110,49 @@ Create `auth.ts`:
 ```ts
 import jwt from 'jsonwebtoken';
 import { promises as fs } from 'fs';
-import path from 'path';
-import bcrypt from 'bcrypt';
 
 const policyDB: Record<string, string[]> = {
-  'admin': ['ls -la', 'df -h'],
-  'viewer': ['ls -la'],
+  'admin': ['ls -a','ls -la', 'df -h'],
+  'viewer': ['ls -a', 'ls -la'],
 };
 
-const auditLogPath = path.resolve('./audit.log');
-
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET is not defined in environment variables');
-}
+const auditLogPath = './audit.log';
 
 export async function validateTokenAndPermissions(token: string, command: string) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
-
-    if (!decoded || typeof decoded.role !== 'string') {
-      throw new Error('Invalid token payload');
-    }
-
     const role = decoded.role;
     const allowedCommands = policyDB[role] || [];
 
-    const allowed = allowedCommands.includes(command);
-    const entry = `[${new Date().toISOString()}] role=${role} command="${command}" allowed=${allowed}\n`;
+    const normalizedCommand = command.trim();
+    const allowed = allowedCommands.includes(normalizedCommand);
 
+    const entry = `[${new Date().toISOString()}] role=${role} command="${command}" allowed=${allowed}\n`;
     await fs.appendFile(auditLogPath, entry);
+
+    console.log("Decoded role:", role);
+    console.log("Command from LLM:", JSON.stringify(command));
+    console.log("Allowed commands:", allowedCommands);
 
     if (!allowed) {
       return { valid: false, reason: 'Insufficient permissions' };
     }
 
-    return { valid: true, reason: '' };
+    return { valid: true, reason: 'Allowed command' };
   } catch (err) {
-    console.error('Error validating token and permissions:', err);
     return { valid: false, reason: 'Invalid or expired token' };
   }
 }
 
-export async function login(username: string, password: string): Promise<string | null> {
-  const users: Record<string, { passwordHash: string, role: string }> = {
-    alice: { passwordHash: await bcrypt.hash('pass123', 10), role: 'admin' },
-    bob: { passwordHash: await bcrypt.hash('pass123', 10), role: 'viewer' },
+export function login(username: string, password: string): string | null {
+  const users: Record<string, { password: string, role: string }> = {
+    alice: { password: "pass123", role: "admin" },
+    bob: { password: "pass123", role: "viewer" }
   };
 
   const user = users[username];
-  if (user && await bcrypt.compare(password, user.passwordHash)) {
-    return jwt.sign({ role: user.role }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+  if (user && user.password === password) {
+    return jwt.sign({ role: user.role }, process.env.JWT_SECRET as string, { expiresIn: "1h" });
   }
 
   return null;
@@ -182,7 +170,7 @@ Why:
 Create `llm.ts`:
 
 ```ts
-import OpenAI from "openai";
+iimport OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -193,14 +181,18 @@ const openai = new OpenAI({
 
 export async function getCommandFromLLM(query: string, token: string): Promise<string | null> {
   const prompt = `Translate this user query into a Linux command: "${query}"`;
-  const response = await openai.completions.create({
-    model: "text-davinci-003",
-    prompt,
-    max_tokens: 30,
-    temperature: 0,
-  });
+  const response = await openai.chat.completions.create({
+  model: "gpt-3.5-turbo",
+  messages: [
+    { role: "system", content: "You are a system that translates natural language into raw Linux shell commands. Respond with only the command and nothing else. Do not include explanations, Markdown, or formatting." },
+    { role: "user", content: `Translate this user query into a Linux command: "${prompt}"` }
+  ],
+  max_tokens: 30,
+  temperature: 0,
+});
 
-  const command = response.choices[0]?.text?.trim();
+
+  const command = response.choices[0]?.message?.content?.trim();
   return command || null;
 }
 ```
@@ -281,7 +273,7 @@ Why:
 
 ## 💻 Step 6: Create Frontend
 
-Create `frontend/index.html`:
+Create `dist/frontend/index.html`:
 
 ```html
 <!DOCTYPE html>
@@ -309,8 +301,8 @@ Create `frontend/index.html`:
   <script>
     let token = "";
     const policies = {
-      admin: ["ls -la", "df -h"],
-      viewer: ["ls -la"]
+      admin: ["ls -a", "ls -la", "df -h"],
+      viewer: ["ls -a", "ls -la"]
     };
 
     document.getElementById("loginForm").onsubmit = async (e) => {
@@ -358,33 +350,9 @@ Create `frontend/index.html`:
 
 ---
 
-## 🐳 Step 7: Add Docker and Compose
-
-Create `Dockerfile`:
-
-```Dockerfile
-FROM node:20
-WORKDIR /app
-COPY . .
-RUN npm install
-EXPOSE 3000
-CMD ["npm", "run", "start"]
-```
-
-Create `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-```
-
 ---
 
-## ✅ Step 8: Run and Test
+## ✅ Step 7: Run and Test
 
 ```bash
 echo "OPENAI_API_KEY=your-openai-key" > .env
