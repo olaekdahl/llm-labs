@@ -166,7 +166,7 @@ Why:
 Create `llm.ts`:
 
 ```ts
-iimport OpenAI from "openai";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -355,7 +355,8 @@ echo "OPENAI_API_KEY=your-openai-key" > .env
 echo "JWT_SECRET=supersecretjwt" >> .env
 
 npm install
-node --loader ts-node/esm server.ts
+tsc
+node dist/server.js
 ```
 
 Open: `http://localhost:3000/frontend/index.html`
