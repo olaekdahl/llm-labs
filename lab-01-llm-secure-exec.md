@@ -98,6 +98,8 @@ Make sure your `package.json` includes:
 mkdir llm-secure-exec-demo && cd llm-secure-exec-demo
 npm init -y
 npm install express openai dotenv jsonwebtoken bcrypt
+npm install --save-dev @types/jsonwebtoken
+npm install --save-dev @types/bcrypt
 npm install --save-dev typescript ts-node
 npx tsc --init
 ```
