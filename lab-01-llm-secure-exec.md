@@ -32,7 +32,7 @@ User → Login → Token → Query → LLM → Command → Policy Check → Exec
 ## 🛠 Prerequisites
 
 - Node.js 20+
-- Docker (optional)
+- Docker
 - OpenAI API key
 - Basic Linux shell familiarity
 
@@ -56,12 +56,48 @@ llm-secure-exec-demo/
 
 ---
 
+## 🧩 Step 0: Ensure ESM Support in Your Project
+
+This project uses **ES Modules** (ESM) syntax like `import express from 'express'`. To make sure your TypeScript and Node environment supports this:
+
+### 🔧 tsconfig.json
+
+Update or create `tsconfig.json` with these values:
+
+```json
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ES2020",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": false
+  },
+  "include": ["*.ts"]
+}
+```
+
+### 🔧 package.json
+
+Make sure your `package.json` includes:
+
+```json
+{
+  "type": "module"
+}
+```
+
+---
+
 ## 🧪 Step 1: Initialize the Project
 
 ```bash
 mkdir llm-secure-exec-demo && cd llm-secure-exec-demo
 npm init -y
-npm install express openai dotenv jsonwebtoken
+npm install express openai dotenv jsonwebtoken bcrypt
 npm install --save-dev typescript ts-node
 npx tsc --init
 ```
