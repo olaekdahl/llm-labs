@@ -399,12 +399,3 @@ Open: `http://localhost:3000/frontend/index.html`
 - "check disk usage"
 
 ---
-
-## 📁 Upcoming Labs
-
-- Lab 02: RBAC from external source (Redis/PostgreSQL)
-- Lab 03: Preventing shell injection
-- Lab 04: Streaming output and LLM responses
-- Lab 05: Rate limiting and telemetry dashboard
-
----
