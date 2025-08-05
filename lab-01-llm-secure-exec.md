@@ -67,6 +67,7 @@ Update or create `tsconfig.json` with these values:
 ```json
 {
   "compilerOptions": {
+    "outDir": "./dist",
     "module": "ESNext",
     "target": "ES2020",
     "moduleResolution": "node",
@@ -100,6 +101,7 @@ npm init -y
 npm install express openai dotenv jsonwebtoken bcrypt
 npm install --save-dev @types/jsonwebtoken
 npm install --save-dev @types/bcrypt
+npm install --save-dev @types/express
 npm install --save-dev typescript ts-node
 npx tsc --init
 ```
@@ -113,17 +115,28 @@ Create `auth.ts`:
 ```ts
 import jwt from 'jsonwebtoken';
 import { promises as fs } from 'fs';
+import path from 'path';
+import bcrypt from 'bcrypt';
 
 const policyDB: Record<string, string[]> = {
   'admin': ['ls -la', 'df -h'],
   'viewer': ['ls -la'],
 };
 
-const auditLogPath = './audit.log';
+const auditLogPath = path.resolve('./audit.log');
+
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is not defined in environment variables');
+}
 
 export async function validateTokenAndPermissions(token: string, command: string) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
+
+    if (!decoded || typeof decoded.role !== 'string') {
+      throw new Error('Invalid token payload');
+    }
+
     const role = decoded.role;
     const allowedCommands = policyDB[role] || [];
 
@@ -138,19 +151,20 @@ export async function validateTokenAndPermissions(token: string, command: string
 
     return { valid: true, reason: '' };
   } catch (err) {
+    console.error('Error validating token and permissions:', err);
     return { valid: false, reason: 'Invalid or expired token' };
   }
 }
 
-export function login(username: string, password: string): string | null {
-  const users: Record<string, { password: string, role: string }> = {
-    alice: { password: "pass123", role: "admin" },
-    bob: { password: "pass123", role: "viewer" }
+export async function login(username: string, password: string): Promise<string | null> {
+  const users: Record<string, { passwordHash: string, role: string }> = {
+    alice: { passwordHash: await bcrypt.hash('pass123', 10), role: 'admin' },
+    bob: { passwordHash: await bcrypt.hash('pass123', 10), role: 'viewer' },
   };
 
   const user = users[username];
-  if (user && user.password === password) {
-    return jwt.sign({ role: user.role }, process.env.JWT_SECRET as string, { expiresIn: "1h" });
+  if (user && await bcrypt.compare(password, user.passwordHash)) {
+    return jwt.sign({ role: user.role }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
   }
 
   return null;
@@ -168,24 +182,25 @@ Why:
 Create `llm.ts`:
 
 ```ts
-import { Configuration, OpenAIApi } from "openai";
+import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
-const openai = new OpenAIApi(configuration);
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
 
 export async function getCommandFromLLM(query: string, token: string): Promise<string | null> {
-  const prompt = `Translate this user query into a Linux command: "\${query}"`;
-  const response = await openai.createCompletion({
+  const prompt = `Translate this user query into a Linux command: "${query}"`;
+  const response = await openai.completions.create({
     model: "text-davinci-003",
     prompt,
     max_tokens: 30,
     temperature: 0,
   });
 
-  const command = response.data.choices[0]?.text?.trim();
+  const command = response.choices[0]?.text?.trim();
   return command || null;
 }
 ```
@@ -228,9 +243,9 @@ Create `server.ts`:
 
 ```ts
 import express from 'express';
-import { getCommandFromLLM } from './llm';
-import { validateTokenAndPermissions, login } from './auth';
-import { executeCommand } from './executor';
+import { getCommandFromLLM } from './llm.js';
+import { validateTokenAndPermissions, login } from './auth.js';
+import { executeCommand } from './executor.js';
 
 const app = express();
 app.use(express.json());
@@ -365,9 +380,6 @@ services:
     build: .
     ports:
       - "3000:3000"
-    environment:
-      - OPENAI_API_KEY=your-openai-key-here
-      - JWT_SECRET=supersecretjwt
 ```
 
 ---
@@ -379,7 +391,7 @@ echo "OPENAI_API_KEY=your-openai-key" > .env
 echo "JWT_SECRET=supersecretjwt" >> .env
 
 npm install
-npx ts-node server.ts
+node --loader ts-node/esm server.ts
 ```
 
 Open: `http://localhost:3000/frontend/index.html`
