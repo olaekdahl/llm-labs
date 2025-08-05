@@ -231,13 +231,20 @@ Create `server.ts`:
 
 ```ts
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getCommandFromLLM } from './llm.js';
 import { validateTokenAndPermissions, login } from './auth.js';
 import { executeCommand } from './executor.js';
 
 const app = express();
 app.use(express.json());
-app.use(express.static("frontend"));
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static frontend
+app.use('/frontend', express.static(path.join(__dirname, 'frontend')));
 
 app.post('/query', async (req, res) => {
   const { query, token } = req.body;
