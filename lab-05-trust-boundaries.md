@@ -6,6 +6,7 @@ In this lab, you'll extend the secure agent pipeline from [Lab 04](https://githu
 
 Not all tools, memory, or users should be equally trusted. An attacker (or even an overly helpful model) should not be able to cross boundaries — e.g., a "viewer" role requesting an "admin-only" command, or a memory injection leading to higher privileges.
 
+[Solution](lab-05-solution.zip)
 ---
 
 ## Learning Objectives
