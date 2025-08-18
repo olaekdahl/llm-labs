@@ -42,9 +42,9 @@ User → AuthN/AuthZ → Planner → Tools
 
 ---
 
-## Step 1: Update `src/tools.ts` to Define Trust Levels
+## Step 1: Update `tools.ts` to Define Trust Levels
 
-Open `src/tools.ts` and update the `Tool` interface and each tool definition.
+Open `tools.ts` and update the `Tool` interface and each tool definition.
 
 ```ts
 // Add new type
@@ -73,6 +73,13 @@ const diskUsage: Tool = {
 };
 
 const readFile: Tool = {
+  name: "memory_usage",
+  trust: "low",
+  validate(args) { ... },
+  async run(args) { ... }
+};
+
+const readFile: Tool = {
   name: "read_file",
   trust: "high",   // only admins allowed
   validate(args) { ... },
@@ -87,7 +94,7 @@ const readFile: Tool = {
 
 ---
 
-## Step 2: Update `src/policy.ts` to Map Roles → Trust Levels
+## Step 2: Update `policy.ts` to Map Roles → Trust Levels
 
 Add a new role-trust mapping and check function.
 
@@ -120,14 +127,75 @@ export function checkTrustBoundary(role: string, toolTrust: TrustLevel): PolicyD
 In the `/agent` loop (after fetching the tool implementation from `TOOL_REGISTRY`), add:
 
 ```ts
-const impl = TOOL_REGISTRY[toolName];
+// Add these imports
+import jwt from "jsonwebtoken";
+import { getMemory, appendMemory, summarizeForPrompt } from "./memory.js";
+import { TOOL_REGISTRY, ToolResult, ToolName } from "./tools.js";
+import { checkPolicyWithNeMo, checkRoleToken, checkTrustBoundary } from "./policy.js";
 
-// New trust boundary check
-const trustDecision = checkTrustBoundary(decoded.role, impl.trust);
-if (!trustDecision.ok) {
-  results.push({ tool: toolName, ok: false, error: trustDecision.reason ?? "" });
-  continue;
-}
+import jwt from "jsonwebtoken";
+import { summarizeForPrompt, appendMemory, getMemory } from "./src/memory";
+import { TOOL_REGISTRY } from "./src/tools";
+import { checkRoleToken, checkTrustBoundary } from "./src/policy";
+import type { ToolName } from "./src/policy"; // or from tools if you exported it there
+
+app.post("/agent", async (req, res) => {
+  try {
+    const { query, token, sessionId } = req.body as { query: string; token: string; sessionId?: string };
+    const sid = sessionId || "default";
+
+    // Decode token
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET as string);
+    } catch {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    const role = decoded.role as string;
+
+    // Memory summary now requires role
+    const summary = summarizeForPrompt(sid, role);
+
+    // (existing) plan with LLM using summary...
+    const plan = await planTools(query, summary);
+
+    const results: ToolResult[] = [];
+    for (const step of plan.steps) {
+      appendMemory(sid, { role: "assistant", content: `Proposed: ${JSON.stringify(step)}`, at: Date.now() });
+
+      const toolName = step.tool as ToolName;
+
+      // Existing RBAC check (optionally returns role if you refactor it)
+      const roleDecision = checkRoleToken(token, toolName);
+      if (!roleDecision.ok) {
+        results.push({ tool: toolName, ok: false, error: roleDecision.reason ?? "" });
+        continue;
+      }
+
+      // New trust boundary check
+      const impl = TOOL_REGISTRY[toolName];
+      const trustDecision = checkTrustBoundary(role, impl.trust);
+      if (!trustDecision.ok) {
+        results.push({ tool: toolName, ok: false, error: trustDecision.reason ?? "" });
+        continue;
+      }
+
+      // (existing) NeMo policy + arg validation + run...
+      // const nemoDecision = await checkPolicyWithNeMo({ tool: toolName, args: step.args ?? {} });
+      // if (!nemoDecision.ok) { ... }
+      // const argCheck = impl.validate(step.args);
+      // if (!argCheck.ok) { ... }
+      // const r = await impl.run(step.args);
+      // results.push(r);
+      // appendMemory(sid, { role: "assistant", content: r.ok ? `Tool ${r.tool} ok` : `Tool ${r.tool} failed: ${r.error ?? ""}`, at: Date.now() });
+    }
+
+    appendMemory(sid, { role: "user", content: query, at: Date.now(), /* trust optional */ });
+    return res.json({ plan, results, memory: getMemory(sid) });
+  } catch (e: any) {
+    return res.status(500).json({ error: e?.message || String(e) });
+  }
+});
 ```
 
 **Why:**  
@@ -136,11 +204,13 @@ if (!trustDecision.ok) {
 
 ---
 
-## Step 4: Update `src/memory.ts` for Memory Isolation
+## Step 4: Update `memory.ts` for Memory Isolation
 
 Tag memory items with a trust level. Update the interface and summarizer.
 
 ```ts
+import type { TrustLevel } from "./tools";
+
 export interface MemoryItem {
   role: "user" | "assistant" | "system";
   content: string;
